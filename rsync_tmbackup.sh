@@ -60,7 +60,7 @@ fn_parse_date() {
 }
 
 fn_find_backups() {
-	fn_run_cmd "find "$DEST_FOLDER" -type d -name "????-??-??-??????" -prune | sort -r"
+	fn_run_cmd "find "$DEST_FOLDER" -maxdepth 1 -type d -name "????-??-??-??????" -prune | sort -r"
 }
 
 fn_expire_backup() {
@@ -72,7 +72,7 @@ fn_expire_backup() {
 	fi
 
 	fn_log_info "Expiring $1"
-	fn_rm "$1"
+	fn_rm_dir "$1"
 }
 
 fn_parse_ssh() {
@@ -107,16 +107,13 @@ fn_mkdir() {
 	fn_run_cmd "mkdir -p -- '$1'"
 }
 
-fn_rm() {
-	if [[ -d $1 ]]; then
-		# when deleting a directory use rsync for performance reasons
-		fn_run_cmd "mkdir -p /tmp/rsync-time-backup-emptydir"
-		fn_run_cmd "rsync -a --delete /tmp/rsync-time-backup-emptydir/ '$1'"
-		fn_run_cmd "rm -rf /tmp/rsync-time-backup-emptydir '$1'"
-	else
-		# when deleting a file use regular rm
-		fn_run_cmd "rm -f '$1'"
-	fi
+# Removes a file or symlink - not for directories
+fn_rm_file() {
+	fn_run_cmd "rm -f -- '$1'"
+}
+
+fn_rm_dir() {
+	fn_run_cmd "rm -rf -- '$1'"
 }
 
 fn_touch() {
@@ -269,10 +266,20 @@ fi
 
 if [ -n "$(fn_find "$INPROGRESS_FILE")" ]; then
 	if [ "$OSTYPE" == "cygwin" ]; then
-		# TODO: Cygwin reports the name of currently running Bash scripts as just "/usr/bin/bash"
-		# TODO: so the pgrep solution below won't work. Need to use "procps -wwFAH", grep
-		# TODO: the script name, and extract the process ID from it.
-		fn_log_warn "Cygwin only: Previous backup task has either been interrupted or it might still be active, but there is currently no check for this. Assuming that the task was simply interrupted."
+		# 1. Grab the PID of previous run from the PID file
+		RUNNINGPID="$(fn_run_cmd "cat $INPROGRESS_FILE")"
+
+		# 2. Get the command for the process currently running under that PID and look for our script name
+		RUNNINGCMD="$(procps -wwfo cmd -p $RUNNINGPID --no-headers | grep "$APPNAME")"
+
+		# 3. Grab the exit code from grep (0=found, 1=not found)
+		GREPCODE=$?
+
+		# 4. if found, assume backup is still running
+		if [ "$GREPCODE" = 0 ]; then
+			fn_log_error "Previous backup task is still active - aborting (command: $RUNNINGCMD)."
+			exit 1
+		fi
 	else 
 		RUNNINGPID="$(fn_run_cmd "cat $INPROGRESS_FILE")"
 		if [ "$RUNNINGPID" = "$(pgrep "$APPNAME")" ]; then
@@ -423,10 +430,10 @@ while : ; do
 	# Add symlink to last backup
 	# -----------------------------------------------------------------------------
 
-	fn_rm "$DEST_FOLDER/latest"
+	fn_rm_file "$DEST_FOLDER/latest"
 	fn_ln "$(basename -- "$DEST")" "$DEST_FOLDER/latest"
 
-	fn_rm "$INPROGRESS_FILE"
+	fn_rm_file "$INPROGRESS_FILE"
 
 	exit $EXIT_CODE
 done
