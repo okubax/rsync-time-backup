@@ -140,7 +140,7 @@ EXCLUSION_FILE=""
 LOG_DIR="$HOME/.$APPNAME"
 AUTO_DELETE_LOG="1"
 
-RSYNC_FLAGS="-D --compress --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable"
+RSYNC_FLAGS="-D --compress --numeric-ids --links --hard-links --one-file-system --itemize-changes --times --recursive --perms --owner --group --stats --human-readable --delete-excluded"
 
 while :; do
 	case $1 in
